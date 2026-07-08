@@ -1,0 +1,19 @@
+# Vivado - Arquivos temporários e de sistema
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+
+# Arquivos gerados automaticamente (podem ser recriados pelo Vivado)
+*.gen/
+
+# Logs e arquivos de histórico de comandos do Vivado
+vivado*.log
+vivado*.jou
+vivado*.str
+
+# Opcional: Arquivo de exportação de hardware (Vitis/Petalinux)
+# Se você precisa do arquivo .xsa no repositório, comente a linha abaixo colocando um # na frente
+*.xsa
