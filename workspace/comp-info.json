@@ -1,0 +1,22 @@
+{
+  "components": [
+    {
+      "hasAbsoluteProjectPath": true,
+      "extraPathToUnzip": [],
+      "prevProjectPath": "C:\\Users\\holy_two\\projeto_vivado\\workspace_agoravai8\\app_component",
+      "name": "app_component",
+      "type": "HOST",
+      "embeddedPlatform": "platform"
+    },
+    {
+      "hasAbsoluteProjectPath": true,
+      "extraPathToUnzip": [],
+      "prevProjectPath": "C:\\Users\\holy_two\\projeto_vivado\\workspace_agoravai8\\platform",
+      "name": "platform",
+      "type": "PLATFORM",
+      "embeddedPlatform": ""
+    }
+  ],
+  "system-project": [],
+  "com.ide.version": "2025.2"
+}
