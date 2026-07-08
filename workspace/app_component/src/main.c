@@ -25,7 +25,7 @@
 #define PLAYER_Y            440
 #define PLAYER_W            13
 #define PLAYER_H            8
-#define PLAYER_SPEED        2
+#define PLAYER_SPEED        6
 #define PLAYER_LIVES        3
 #define PLAYER_MIN_X        8
 #define PLAYER_MAX_X        (SCREEN_W - PLAYER_W - 8)
@@ -34,24 +34,24 @@
 /* ── Bullets ─────────────────────────────────────────────────────────────── */
 #define BULLET_W        3
 #define BULLET_H        8
-#define BULLET_P_SPEED  4
-#define BULLET_E_SPEED  3
-#define ENEMY_BULLETS   3
+#define BULLET_P_SPEED  10
+#define BULLET_E_SPEED  10
+#define ENEMY_BULLETS   7
 
 /* ── Fleet ───────────────────────────────────────────────────────────────── */
 #define FLEET_ROWS              5
-#define FLEET_COLS              11
+#define FLEET_COLS              35
 #define FLEET_SPACING_X         16
 #define FLEET_SPACING_Y         16
 #define FLEET_START_X           80
 #define FLEET_START_Y           64
 #define FLEET_STEP_INIT_PX      2
-#define FLEET_STEP_INIT_INT     0.5f
-#define FLEET_STEP_MIN_INT      0.05f
+#define FLEET_STEP_INIT_INT     0.001f
+#define FLEET_STEP_MIN_INT      0.00001f
 #define FLEET_STEP_INT_DELTA    0.008f
-#define FLEET_DROP_PX           8
-#define FLEET_SHOOT_INIT_INT    1.5f
-#define FLEET_SHOOT_MIN_INT     0.3f
+#define FLEET_DROP_PX           40
+#define FLEET_SHOOT_INIT_INT    0.01f
+#define FLEET_SHOOT_MIN_INT     0.001f
 #define FLEET_BOUNDARY_LEFT     8
 #define FLEET_BOUNDARY_RIGHT    (SCREEN_W - 8)
 
@@ -59,9 +59,9 @@
 #define UFO_Y           40
 #define UFO_W           16
 #define UFO_H           7
-#define UFO_SPEED       1
-#define UFO_SPAWN_MIN   25.0f
-#define UFO_SPAWN_MAX   30.0f
+#define UFO_SPEED       15
+#define UFO_SPAWN_MIN   1.0f
+#define UFO_SPAWN_MAX   2.0f
 
 /* ── Bunkers ─────────────────────────────────────────────────────────────── */
 #define BUNKER_COUNT    4
@@ -99,10 +99,12 @@ typedef struct {
     int  dy, dx;
 } Bullet;
 
+#define PLAYER_BULLETS 10   // quantas balas simultâneas permitir
+
 typedef struct {
     Vec2   pos;
     int    lives;
-    Bullet bullet;
+    Bullet bullets[PLAYER_BULLETS];
     int    invincible_frames;
 } Player;
 
@@ -579,15 +581,15 @@ void bullet_update(Bullet *b) {
 /* ===== player.c ===== */
 
 void player_init(Player *p) {
-    p->pos.x            = (SCREEN_W - PLAYER_W) / 2;
-    p->pos.y            = PLAYER_Y;
-    p->lives            = PLAYER_LIVES;
+    p->pos.x = (SCREEN_W - PLAYER_W) / 2;
+    p->pos.y = PLAYER_Y;
+    p->lives = PLAYER_LIVES;
     p->invincible_frames = 0;
-    bullet_clear(&p->bullet);
-}
+    for (int i = 0; i < PLAYER_BULLETS; i++)
+        bullet_clear(&p->bullets[i]);
+}  
 
 void player_update(Player *p, const InputState *input, int *shot_count) {
-    /* Movement */
     if (input->left) {
         p->pos.x -= PLAYER_SPEED;
         if (p->pos.x < PLAYER_MIN_X) p->pos.x = PLAYER_MIN_X;
@@ -597,15 +599,20 @@ void player_update(Player *p, const InputState *input, int *shot_count) {
         if (p->pos.x > PLAYER_MAX_X) p->pos.x = PLAYER_MAX_X;
     }
 
-    /* Fire — one bullet at a time */
-    if (input->fire && !p->bullet.active) {
-        int bx = p->pos.x + PLAYER_W / 2 - BULLET_W / 2;
-        int by = p->pos.y - BULLET_H;
-        bullet_fire(&p->bullet, bx, by, 0, -BULLET_P_SPEED);
-        (*shot_count)++;
+    if (input->fire) {
+        for (int i = 0; i < PLAYER_BULLETS; i++) {
+            if (!p->bullets[i].active) {
+                int bx = p->pos.x + PLAYER_W / 2 - BULLET_W / 2;
+                int by = p->pos.y - BULLET_H;
+                bullet_fire(&p->bullets[i], bx, by, 0, -BULLET_P_SPEED);
+                (*shot_count)++;
+                break;
+            }
+        }
     }
 
-    bullet_update(&p->bullet);
+    for (int i = 0; i < PLAYER_BULLETS; i++)
+        bullet_update(&p->bullets[i]);
 
     if (p->invincible_frames > 0)
         p->invincible_frames--;
@@ -722,6 +729,60 @@ static int inv_width(int type) {
     return 8;
 }
 
+/* Padrões de frota: 1 = invasor presente, 0 = vazio.
+   Cada padrão tem FLEET_ROWS x FLEET_COLS células. */
+#define FLEET_LAYOUT_COUNT 6
+
+static const uint8_t FLEET_LAYOUTS[FLEET_LAYOUT_COUNT][FLEET_ROWS][FLEET_COLS] = {
+    /* "MATAO" — 5 letras x (6 col + 1 espaço) = 34 colunas + 1 sobra */
+
+    {
+        {1,1,1,1,1,1,1,1,1,1,1},
+        {0,0,0,0,0,0,0,0,0,0,0},
+        {1,1,1,1,1,1,1,1,1,1,1},
+        {0,0,0,0,0,0,0,0,0,0,0},
+        {1,1,1,1,1,1,1,1,1,1,1},
+    },
+    /* Layout 1: formato de V */
+    {
+        {1,0,0,0,0,0,0,0,0,0,1},
+        {1,1,0,0,0,0,0,0,0,1,1},
+        {1,1,1,0,0,0,0,0,1,1,1},
+        {1,1,1,1,0,0,0,1,1,1,1},
+        {1,1,1,1,1,1,1,1,1,1,1},
+    },
+    /* Layout 2: losango / diamante */
+    {
+        {0,0,0,0,1,1,1,0,0,0,0},
+        {0,0,1,1,1,1,1,1,1,0,0},
+        {1,1,1,1,1,1,1,1,1,1,1},
+        {0,0,1,1,1,1,1,1,1,0,0},
+        {0,0,0,0,1,1,1,0,0,0,0},
+    },
+    {
+        {0,1,0,1,0,1,0,1,0,1,0},
+        {0,1,0,1,0,1,0,1,0,1,0},
+        {0,1,0,1,0,1,0,1,0,1,0},
+        {0,1,0,1,0,1,0,1,0,1,0},
+        {0,1,0,1,0,1,0,1,0,1,0},
+    },
+    {
+        {0,1,0,1,0,1,0,1,0,1,0},
+        {1,0,1,0,1,0,1,0,1,0,1},
+        {0,1,0,1,0,1,0,1,0,1,0},
+        {1,0,1,0,1,0,1,0,1,0,1},
+        {0,1,0,1,0,1,0,1,0,1,0},
+    },
+    {
+    /*  M A T A O  (cada letra = 6 colunas, 1 de gap)                                  */
+        {1,0,0,0,1, 0, 1,1,1,1,1, 0, 1,1,1,1,1, 0, 1,1,1,1,1, 0, 0,1,1,1,1,0, 0,0,0,0,0},
+        {1,1,0,1,1, 0, 1,0,0,0,1, 0, 0,0,1,0,0, 0, 1,0,0,0,1, 0, 1,0,0,0,0,1, 0,0,0,0,0},
+        {1,0,1,0,1, 0, 1,1,1,1,1, 0, 0,0,1,0,0, 0, 1,1,1,1,1, 0, 1,0,0,0,0,1, 0,0,0,0,0},
+        {1,0,0,0,1, 0, 1,0,0,0,1, 0, 0,0,1,0,0, 0, 1,0,0,0,1, 0, 1,0,0,0,0,1, 0,0,0,0,0},
+        {1,0,0,0,1, 0, 1,0,0,0,1, 0, 0,0,1,0,0, 0, 1,0,0,0,1, 0, 0,1,1,1,1,0, 0,0,0,0,0},
+    },
+};
+
 void fleet_init(Fleet *f, int level) {
     f->origin.x     = FLEET_START_X;
     f->origin.y     = FLEET_START_Y;
@@ -729,7 +790,6 @@ void fleet_init(Fleet *f, int level) {
     f->step_px      = FLEET_STEP_INIT_PX;
     f->anim_frame   = 0;
 
-    /* Speed scales with level */
     float speed_bonus = (level - 1) * 0.04f;
     f->step_interval  = FLEET_STEP_INIT_INT - speed_bonus;
     if (f->step_interval < FLEET_STEP_MIN_INT)
@@ -740,16 +800,19 @@ void fleet_init(Fleet *f, int level) {
     f->shoot_timer    = f->shoot_interval;
     f->alive_count    = 0;
 
+    int layout_idx = (level - 1) % FLEET_LAYOUT_COUNT;
+    const uint8_t (*layout)[FLEET_COLS] = FLEET_LAYOUTS[layout_idx];
+
     for (int r = 0; r < FLEET_ROWS; r++) {
         for (int c = 0; c < FLEET_COLS; c++) {
             Invader *inv = &f->grid[r][c];
             int type     = row_to_type(r);
             inv->type       = type;
-            inv->alive      = 1;
+            inv->alive      = layout[r][c] ? 1 : 0;
             inv->anim_frame = 0;
             inv->pos.x      = f->origin.x + c * FLEET_SPACING_X;
             inv->pos.y      = f->origin.y + r * FLEET_SPACING_Y;
-            f->alive_count++;
+            if (inv->alive) f->alive_count++;
         }
     }
 
@@ -884,50 +947,59 @@ int collisions_update(Game *g) {
     int result = 0;
 
     /* 1. Player bullet vs invaders */
-    if (p->bullet.active) {
-        int bx = p->bullet.pos.x, by = p->bullet.pos.y;
-        for (int r = 0; r < FLEET_ROWS && p->bullet.active; r++) {
-            for (int c = 0; c < FLEET_COLS && p->bullet.active; c++) {
-                Invader *inv = &f->grid[r][c];
-                if (!inv->alive) continue;
-                int iw = inv_w(inv->type);
-                if (aabb_overlap(bx, by, BULLET_W, BULLET_H,
-                                 inv->pos.x, inv->pos.y, iw, 8)) {
-                    inv->alive = 0;
-                    f->alive_count--;
-                    bullet_clear(&p->bullet);
-                    /* Speed up fleet */
-                    f->step_interval -= FLEET_STEP_INT_DELTA;
-                    if (f->step_interval < FLEET_STEP_MIN_INT)
-                        f->step_interval = FLEET_STEP_MIN_INT;
-                    /* Score */
-                    static const int pts[3] = { 10, 20, 30 };
-                    g->score += pts[inv->type];
-                    if (g->score > g->high_score)
-                        g->high_score = g->score;
-                    if (f->alive_count == 0) result = 2;
+    for (int bi = 0; bi < PLAYER_BULLETS; bi++) {
+        Bullet *pb = &p->bullets[bi];
+        if (pb->active) {
+            int bx = pb->pos.x, by = pb->pos.y;
+            for (int r = 0; r < FLEET_ROWS && pb->active; r++) {
+                for (int c = 0; c < FLEET_COLS && pb->active; c++) {
+                    Invader *inv = &f->grid[r][c];
+                    if (!inv->alive) continue;
+                    int iw = inv_w(inv->type);
+                    if (aabb_overlap(bx, by, BULLET_W, BULLET_H,
+                                     inv->pos.x, inv->pos.y, iw, 8)) {
+                        inv->alive = 0;
+                        f->alive_count--;
+                        bullet_clear(pb);
+                        /* Speed up fleet */
+                        f->step_interval -= FLEET_STEP_INT_DELTA;
+                        if (f->step_interval < FLEET_STEP_MIN_INT)
+                            f->step_interval = FLEET_STEP_MIN_INT;
+                        /* Score */
+                        static const int pts[3] = { 10, 20, 30 };
+                        g->score += pts[inv->type];
+                        if (g->score > g->high_score)
+                            g->high_score = g->score;
+                        if (f->alive_count == 0) result = 2;
+                    }
                 }
             }
         }
     }
 
     /* 2. Player bullet vs UFO */
-    if (p->bullet.active && u->active) {
-        if (aabb_overlap(p->bullet.pos.x, p->bullet.pos.y, BULLET_W, BULLET_H,
-                         u->pos.x, u->pos.y, UFO_W, UFO_H)) {
-            g->score += u->points;
-            if (g->score > g->high_score) g->high_score = g->score;
-            u->active = 0;
-            u->spawn_timer = UFO_SPAWN_MIN +
-                (float)(g->shot_count % 23) / 23.0f * (UFO_SPAWN_MAX - UFO_SPAWN_MIN);
-            bullet_clear(&p->bullet);
+    if (u->active) {
+        for (int bi = 0; bi < PLAYER_BULLETS; bi++) {
+            Bullet *pb = &p->bullets[bi];
+            if (!pb->active) continue;
+            if (aabb_overlap(pb->pos.x, pb->pos.y, BULLET_W, BULLET_H,
+                             u->pos.x, u->pos.y, UFO_W, UFO_H)) {
+                g->score += u->points;
+                if (g->score > g->high_score) g->high_score = g->score;
+                u->active = 0;
+                u->spawn_timer = UFO_SPAWN_MIN +
+                    (float)(g->shot_count % 23) / 23.0f * (UFO_SPAWN_MAX - UFO_SPAWN_MIN);
+                bullet_clear(pb);
+                break;
+            }
         }
     }
 
     /* 3. Player bullet vs bunkers */
-    if (p->bullet.active) {
+    for (int bi = 0; bi < PLAYER_BULLETS; bi++) {
+        if (!p->bullets[bi].active) continue;
         for (int i = 0; i < BUNKER_COUNT; i++)
-            bunker_damage_bullet(&g->bunkers[i], &p->bullet);
+            bunker_damage_bullet(&g->bunkers[i], &p->bullets[bi]);
     }
 
     /* 4. Enemy bullets vs player */
@@ -941,7 +1013,8 @@ int collisions_update(Game *g) {
                 p->lives--;
                 p->invincible_frames = INVINCIBLE_FRAMES;
                 p->pos.x = (SCREEN_W - PLAYER_W) / 2;
-                bullet_clear(&p->bullet);
+                for (int bi = 0; bi < PLAYER_BULLETS; bi++)
+                    bullet_clear(&p->bullets[bi]);
                 if (p->lives <= 0) result = 1;
             }
         }
@@ -1205,8 +1278,8 @@ static inline void timer_tick(void) {
 
 /* Botoes Zybo Z7 sao ativos-ALTO (pressionado = 1): BTN0=esq, BTN1=dir,
    BTN2=fogo, BTN3=pause */
-#define BTN_LEFT   (1u << 0)
-#define BTN_RIGHT  (1u << 1)
+#define BTN_RIGHT  (1u << 0)
+#define BTN_LEFT   (1u << 1)
 #define BTN_FIRE   (1u << 2)
 #define BTN_PAUSE  (1u << 3)
 #define BTN_MASK   0xFu
@@ -1229,10 +1302,10 @@ void input_poll(int fd, InputState *state) {
 
     state->left  = (pressed      & BTN_LEFT)  ? 1 : 0;
     state->right = (pressed      & BTN_RIGHT) ? 1 : 0;
-    state->fire  = (just_pressed & BTN_FIRE)  ? 1 : 0;
+    state->fire  = (pressed & BTN_FIRE)  ? 1 : 0;
     state->pause = (just_pressed & BTN_PAUSE) ? 1 : 0;
     state->quit  = 0;
-    state->reset = 0;
+    state->reset = (just_pressed & BTN_FIRE)  ? 1 : 0;
 
     prev_raw = raw;
 }
@@ -1308,8 +1381,9 @@ static void render_player(const Player *p) {
     if (p->invincible_frames > 0 && (p->invincible_frames & 4))
         return;
     draw_sprite(p->pos.x, p->pos.y, &SPRITE_PLAYER);
-    if (p->bullet.active)
-        draw_sprite(p->bullet.pos.x, p->bullet.pos.y, &SPRITE_BULLET_PLAYER);
+    for (int i = 0; i < PLAYER_BULLETS; i++)
+        if (p->bullets[i].active)
+            draw_sprite(p->bullets[i].pos.x, p->bullets[i].pos.y, &SPRITE_BULLET_PLAYER);
 }
 
 static void render_ufo(const UFO *u) {
@@ -1321,8 +1395,8 @@ static void render_ufo(const UFO *u) {
 static void render_title(void) {
     clear_screen(COLOR_BLACK);
     draw_string(160, 140, "SPACE  INVADERS", COLOR_GREEN, COLOR_BLACK);
-    draw_string(168, 180, "PRESS SPACE TO START", COLOR_WHITE, COLOR_BLACK);
-    draw_string(192, 220, "Q / ESC TO QUIT", COLOR_WHITE, COLOR_BLACK);
+    draw_string(168, 180, "PRESS [FIRE] TO START", COLOR_WHITE, COLOR_BLACK);
+    // draw_string(192, 220, "Q / ESC TO QUIT", COLOR_WHITE, COLOR_BLACK);
 
     draw_string(152, 280, "SCORE TABLE", COLOR_YELLOW, COLOR_BLACK);
     draw_sprite(152, 300, &SPRITE_INVADER_C[0]);
@@ -1365,8 +1439,8 @@ static void render_game_over(const Game *g) {
     char buf[32];
     snprintf(buf, sizeof(buf), "SCORE: %06d", g->score);
     draw_string(240, 224, buf, COLOR_WHITE, COLOR_BLACK);
-    draw_string(184, 256, "PRESS R TO RESTART", COLOR_WHITE, COLOR_BLACK);
-    draw_string(192, 272, "Q / ESC TO QUIT", COLOR_WHITE, COLOR_BLACK);
+    draw_string(184, 256, "PRESS [FIRE] TO RESTART", COLOR_WHITE, COLOR_BLACK);
+    // draw_string(192, 272, "Q / ESC TO QUIT", COLOR_WHITE, COLOR_BLACK);
     render_hud(g);
 }
 
